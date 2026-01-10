@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
-
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -58,19 +56,19 @@ func PrintLog(msg string) {
 	fmt.Println(style.Render(msg))
 }
 
-func ExtractCodeBlocks(md string) []string {
-	re := regexp.MustCompile("```(?s)(.*?)```")
-	matches := re.FindAllStringSubmatch(md, -1)
-	var results []string
-	for _, match := range matches {
-		if len(match) > 1 {
-			content := strings.TrimSpace(match[1])
-			if idx := strings.Index(content, "\n"); idx != -1 {
-				content = strings.TrimSpace(content[idx:])
+func ExtractCodeBlocks(md string) string {
+	lines := strings.Split(md, "\n")
+	var result strings.Builder
+	counter := 0
+	for i, line := range lines {
+		if strings.HasPrefix(line, "```") && counter == 0 {
+			counter += 1
+		} else {
+			if(len(lines) - 1 != i) {
+				result.WriteString(line)
+				result.WriteString("\n")
 			}
-			results = append(results, content)
 		}
 	}
-	return results
-
+	return result.String()
 }
