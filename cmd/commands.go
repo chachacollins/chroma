@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	Long: `A Fast and Flexible documentation generator built with go and powered by Mistral ai Codestral
                `,
 	Run: func(cmd *cobra.Command, args []string) {
-		// Do Stuff Here
+		cmd.Help()
 	},
 }
 
