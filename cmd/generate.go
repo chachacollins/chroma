@@ -27,12 +27,54 @@ type ChatRequest struct {
 	MaxTokens   int       `json:"max_tokens,omitempty"`
 }
 
+type ChatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+}
+
 func readFile(fileName string) []byte {
 	file, err := os.ReadFile(fileName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not read file")
 	}
 	return file
+}
+
+// makeMistralRequest is a reusable function that handles API requests to Mistral
+func makeMistralRequest(payload ChatRequest) (*ChatResponse, error) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", API_URL, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+cfg.Load().Apikey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("making request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var response ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("decoding response: %w", err)
+	}
+
+	return &response, nil
 }
 
 func generateMd(writeFilePath string, file []byte) {
@@ -53,46 +95,17 @@ func generateMd(writeFilePath string, file []byte) {
 		MaxTokens:   100000,
 	}
 
-	payloadBytes, err := json.Marshal(generateMdPayload)
+	response, err := makeMistralRequest(generateMdPayload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: marshaling generateMd: %s", err)
-	}
-
-	req, err := http.NewRequest("POST", API_URL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: creating generateMd: %s\n", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+cfg.Load().Apikey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: making generateMd: %s\n", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "unexpected status code: %d\n", resp.StatusCode)
-	}
-
-	var response struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: decoding response: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		return
 	}
 
 	if len(response.Choices) > 0 {
-		utils.WriteFile(writeFilePath, response.Choices[0].Message.Content)
+		content := utils.ExtractCodeBlocks(response.Choices[0].Message.Content)
+		utils.WriteFile(writeFilePath, content)
+		utils.PrintSuccess("Generated markdown")
 	}
-	utils.PrintSuccess("Generated markdown")
 }
 
 func inlineComm(writeFilePath string, file []byte) {
@@ -113,48 +126,17 @@ func inlineComm(writeFilePath string, file []byte) {
 		MaxTokens:   100000,
 	}
 
-	payloadBytes, err := json.Marshal(inlineCommPayload)
+	response, err := makeMistralRequest(inlineCommPayload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: marshaling inlineComm: %s\n", err)
-	}
-
-	req, err := http.NewRequest("POST", API_URL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: creating inlineComm: %s\n", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+cfg.Load().Apikey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: making inlineComm: %s\n", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "unexpected status code: %d", resp.StatusCode)
-	}
-
-	var response struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: decoding response: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		return
 	}
 
 	if len(response.Choices) > 0 {
 		content := utils.ExtractCodeBlocks(response.Choices[0].Message.Content)
-		utils.WriteFile(writeFilePath, content[0])
+		utils.WriteFile(writeFilePath, content)
+		utils.PrintSuccess("Generated inline documentation")
 	}
-	utils.PrintSuccess("Generated inline documentation")
-
 }
 
 func starLight(writeFilePath string, file []byte) {
@@ -175,48 +157,20 @@ func starLight(writeFilePath string, file []byte) {
 		MaxTokens:   10000,
 	}
 
-	payloadBytes, err := json.Marshal(starLightPayload)
+	response, err := makeMistralRequest(starLightPayload)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: marshaling starLight: %s\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		return
 	}
 
-	req, err := http.NewRequest("POST", API_URL, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: creating starLight: %s\n", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+cfg.Load().Apikey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: making starLight: %s\n", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "unexpected status code: %d", resp.StatusCode)
-	}
-
-	var response struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: decoding response: %s\n", err)
-	}
 	fileNew := filepath.Base(writeFilePath)
 	filePath := "./docs/src/content/docs/reference/" + fileNew + ".md"
 
 	if len(response.Choices) > 0 {
-		utils.WriteFile(filePath, response.Choices[0].Message.Content)
+		content := utils.ExtractCodeBlocks(response.Choices[0].Message.Content)
+		utils.WriteFile(filePath, content)
+		utils.PrintSuccess("Generated starlight docs")
 	}
-	utils.PrintSuccess("Generated starlight docs")
 }
 
 func getDocs() {
@@ -228,6 +182,7 @@ func getDocs() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: could not run command: %s\n", err)
 		}
+		//TODO make this more crossplatform
 		cmd = exec.Command("rm", "-rf", ".git")
 		cmd.Dir = "./docs"
 		_, err = cmd.Output()
@@ -259,6 +214,7 @@ func serveDocs() {
 	buildDocs()
 	runPreviewDocs()
 }
+
 func buildDocs() {
 	utils.PrintLog("Building the docs...")
 	cmd := exec.Command("npm", "run", "build")
@@ -268,7 +224,6 @@ func buildDocs() {
 		fmt.Fprintf(os.Stderr, "Error: could not run command: %s\n", err)
 	}
 	utils.PrintSuccess("Finished building docs")
-
 }
 
 func runPreviewDocs() {
